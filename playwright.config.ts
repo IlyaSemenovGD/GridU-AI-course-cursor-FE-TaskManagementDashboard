@@ -26,11 +26,23 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
     },
   ],
-  webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${E2E_DEV_PORT}`,
-    url: e2eOrigin,
-    reuseExistingServer: !process.env.CI,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  webServer: [
+    {
+      command:
+        'bash -lc "cd backend && python3 -m pip install -q -r requirements.txt && exec python3 run.py"',
+      url: 'http://127.0.0.1:5000/health',
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 120_000,
+    },
+    {
+      command: `npx --yes wait-on@7.4.0 http://127.0.0.1:5000/health && npm run dev -- --host 127.0.0.1 --port ${E2E_DEV_PORT}`,
+      url: e2eOrigin,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 180_000,
+    },
+  ],
 })

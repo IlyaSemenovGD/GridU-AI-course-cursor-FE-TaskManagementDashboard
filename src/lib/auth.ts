@@ -1,21 +1,20 @@
-/** Demo-only local auth for E2E; passwords stored in plain text. Do not use in production. */
+import { API_BASE_URL } from './env'
 
-export type StoredUser = {
-  id: string
-  name: string
-  email: string
-  /** Demo storage only — not secure */
-  password: string
-}
+const SESSION_KEY = 'tm-session'
 
 export type Session = {
   userId: string
   email: string
   name: string
+  accessToken: string
 }
 
-const USERS_KEY = 'tm-users'
-const SESSION_KEY = 'tm-session'
+type ApiUser = {
+  id: number
+  email: string
+  full_name: string
+  username: string
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -27,28 +26,44 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-export function loadUsers(): StoredUser[] {
-  return readJson<StoredUser[]>(USERS_KEY, [])
-}
-
-function saveUsers(users: StoredUser[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users))
-}
-
 export function getSession(): Session | null {
-  return readJson<Session | null>(SESSION_KEY, null)
+  const s = readJson<Session | null>(SESSION_KEY, null)
+  if (!s?.accessToken || !s.userId || !s.email) return null
+  return s
 }
 
-export function setSession(session: Session | null) {
+export function getAccessToken(): string | null {
+  return getSession()?.accessToken ?? null
+}
+
+function setSession(session: Session | null) {
   if (session === null) localStorage.removeItem(SESSION_KEY)
   else localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
-export function registerUser(input: {
+function sessionFromApiUser(user: ApiUser, accessToken: string): Session {
+  return {
+    userId: String(user.id),
+    email: user.email,
+    name: user.full_name || user.username,
+    accessToken,
+  }
+}
+
+async function fetchMe(token: string): Promise<Session | null> {
+  const res = await fetch(`${API_BASE_URL}/api/users/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return null
+  const user = (await res.json()) as ApiUser
+  return sessionFromApiUser(user, token)
+}
+
+export async function registerUser(input: {
   name: string
   email: string
   password: string
-}): { ok: true } | { ok: false; error: string } {
+}): Promise<{ ok: true } | { ok: false; error: string }> {
   const name = input.name.trim()
   const email = input.email.trim().toLowerCase()
   const password = input.password
@@ -60,34 +75,88 @@ export function registerUser(input: {
   if (password.length < 8)
     return { ok: false, error: 'Password must be at least 8 characters.' }
 
-  const users = loadUsers()
-  if (users.some((u) => u.email.toLowerCase() === email))
-    return { ok: false, error: 'An account with this email already exists.' }
+  const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    message?: string
+    errors?: Record<string, string[]>
+    access_token?: string
+    id?: number
+    email?: string
+    full_name?: string
+    username?: string
+  }
 
-  const id = crypto.randomUUID()
-  users.push({ id, name, email, password })
-  saveUsers(users)
-  setSession({ userId: id, email, name })
+  if (res.status === 409) {
+    return {
+      ok: false,
+      error: 'An account with this email already exists.',
+    }
+  }
+  if (!res.ok) {
+    if (data.errors) {
+      const first = Object.values(data.errors)[0]?.[0]
+      if (first) return { ok: false, error: first }
+    }
+    return {
+      ok: false,
+      error:
+        typeof data.message === 'string' ? data.message : 'Registration failed.',
+    }
+  }
+
+  const token = data.access_token
+  if (!token || data.id == null) {
+    return { ok: false, error: 'Invalid response from server.' }
+  }
+
+  const user: ApiUser = {
+    id: data.id,
+    email: data.email ?? email,
+    full_name: data.full_name ?? name,
+    username: data.username ?? email,
+  }
+  setSession(sessionFromApiUser(user, token))
   return { ok: true }
 }
 
-export function loginUser(input: {
+export async function loginUser(input: {
   email: string
   password: string
-}): { ok: true } | { ok: false; error: string } {
+}): Promise<{ ok: true } | { ok: false; error: string }> {
   const email = input.email.trim().toLowerCase()
   const password = input.password
 
   if (!email || !password)
     return { ok: false, error: 'Email and password are required.' }
 
-  const users = loadUsers()
-  const user = users.find((u) => u.email.toLowerCase() === email)
-  if (!user) return { ok: false, error: 'No account found for this email.' }
-  if (user.password !== password)
-    return { ok: false, error: 'Incorrect password. Try again.' }
+  const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { message?: string; access_token?: string }
 
-  setSession({ userId: user.id, email: user.email, name: user.name })
+  if (!res.ok) {
+    if (typeof data.message === 'string') {
+      if (data.message.includes('No account found')) {
+        return { ok: false, error: 'No account found for this email.' }
+      }
+      return { ok: false, error: data.message }
+    }
+    return { ok: false, error: 'Sign in failed.' }
+  }
+
+  const token = data.access_token
+  if (!token) return { ok: false, error: 'Invalid response from server.' }
+
+  const session = await fetchMe(token)
+  if (!session) return { ok: false, error: 'Could not load your profile.' }
+
+  setSession(session)
   return { ok: true }
 }
 

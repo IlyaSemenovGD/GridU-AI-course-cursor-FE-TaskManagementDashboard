@@ -9,6 +9,7 @@ type TasksWorkspaceProps = {
   inProgress: number
   completed: number
   dueSoon: number
+  taskCreateError?: string | null
   onCreate: Parameters<typeof TasksPanel>[0]['onCreate']
   onComplete: (id: string) => void
   onDelete: (id: string) => void
@@ -26,6 +27,7 @@ export function TasksWorkspace({
   inProgress,
   completed,
   dueSoon,
+  taskCreateError,
   onCreate,
   onComplete,
   onDelete,
@@ -51,6 +53,7 @@ export function TasksWorkspace({
 
       <TasksPanel
         tasks={tasks}
+        createError={taskCreateError}
         onCreate={onCreate}
         onComplete={onComplete}
         onDelete={onDelete}

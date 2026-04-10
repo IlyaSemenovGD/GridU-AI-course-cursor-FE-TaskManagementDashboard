@@ -26,6 +26,7 @@ type DashboardCollaborationProps = {
     check: ReactNode
     clock: ReactNode
   }
+  taskCreateError?: string | null
   onCreateTask: Parameters<typeof TasksPanel>[0]['onCreate']
   onCompleteTask: (id: string) => void
   onDeleteTask: (id: string) => void
@@ -45,6 +46,7 @@ export function DashboardCollaboration({
   completionPercent,
   activeTaskCount,
   statIcons,
+  taskCreateError,
   onCreateTask,
   onCompleteTask,
   onDeleteTask,
@@ -93,6 +95,7 @@ export function DashboardCollaboration({
 
       <TasksPanel
         tasks={tasks}
+        createError={taskCreateError}
         onCreate={onCreateTask}
         onComplete={onCompleteTask}
         onDelete={onDeleteTask}

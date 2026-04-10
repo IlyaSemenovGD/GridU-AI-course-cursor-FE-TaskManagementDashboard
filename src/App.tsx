@@ -9,7 +9,13 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { Sidebar, type SidebarNavId } from './components/Sidebar'
 import { getSession, logoutUser, type Session } from './lib/auth'
 import { loadActivities, saveActivities } from './lib/activityStore'
-import { createTask, loadTasksForUser, saveTasksForUser } from './lib/taskStore'
+import {
+  completeTaskApi,
+  createTaskApi,
+  deleteTaskApi,
+  fetchTasksForUser,
+  updateTaskStatusApi,
+} from './lib/taskApi'
 import type { ActivityItem } from './types/dashboard'
 import type { Task, TaskStatus } from './types'
 import { KanbanBoard } from './components/kanban/KanbanBoard'
@@ -92,19 +98,34 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeNav, setActiveNav] = useState<SidebarNavId>('dashboard')
   const [darkMode, setDarkMode] = useState(() => readDarkMode())
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const s = getSession()
-    return s ? loadTasksForUser(s.userId) : []
-  })
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [taskCreateError, setTaskCreateError] = useState<string | null>(null)
   const [activities, setActivities] = useState<ActivityItem[]>(() => {
     const s = getSession()
     return s ? loadActivities(s.userId) : []
   })
 
   useEffect(() => {
-    if (!session) return
-    saveTasksForUser(session.userId, tasks)
-  }, [session, tasks])
+    if (!session) {
+      setTasks([])
+      return
+    }
+    const ac = new AbortController()
+    ;(async () => {
+      const r = await fetchTasksForUser(ac.signal)
+      if (!r.ok) {
+        if ('aborted' in r && r.aborted) return
+        if ('unauthorized' in r && r.unauthorized) {
+          logoutUser()
+          setSession(null)
+          setTasks([])
+        }
+        return
+      }
+      setTasks(r.tasks)
+    })()
+    return () => ac.abort()
+  }, [session])
 
   useEffect(() => {
     if (!session) return
@@ -136,7 +157,6 @@ export default function App() {
     const s = getSession()
     setSession(s)
     if (s) {
-      setTasks(loadTasksForUser(s.userId))
       setActivities(loadActivities(s.userId))
     }
   }, [])
@@ -150,65 +170,82 @@ export default function App() {
   }, [])
 
   const addTask = useCallback(
-    (input: Parameters<typeof createTask>[1]) => {
-      if (!session) return
-      const t = createTask(session.userId, {
+    async (
+      input: Pick<Task, 'title' | 'description' | 'dueDate' | 'priority'> & {
+        assignee?: string
+      },
+    ) => {
+      if (!session) return false
+      setTaskCreateError(null)
+      const result = await createTaskApi({
         ...input,
-        assignee: session.name,
+        assignee: input.assignee ?? session.name,
       })
-      setTasks((prev) => [...prev, t])
+      if (!result.ok) {
+        setTaskCreateError(result.error)
+        return false
+      }
+      const sync = await fetchTasksForUser()
+      if (sync.ok) {
+        setTasks(sync.tasks)
+      } else if (!('aborted' in sync && sync.aborted)) {
+        setTasks((prev) => [...prev, result.task])
+      }
       pushActivity({
         type: 'task_created',
-        message: `Created “${t.title}”.`,
+        message: `Created “${result.task.title}”.`,
         actorName: session.name,
       })
+      return true
     },
     [session, pushActivity],
   )
 
   const completeTask = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (!session) return
       let title = 'Task'
-      setTasks((prev) => {
-        const t = prev.find((x) => x.id === id)
-        if (t) title = t.title
-        return prev.map((x) =>
-          x.id === id ? { ...x, status: 'done' as const } : x,
-        )
-      })
+      const t = tasks.find((x) => x.id === id)
+      if (t) title = t.title
+      const ok = await completeTaskApi(id)
+      if (!ok) return
+      setTasks((prev) =>
+        prev.map((x) => (x.id === id ? { ...x, status: 'done' as const } : x)),
+      )
       pushActivity({
         type: 'task_completed',
         message: `Completed “${title}”.`,
         actorName: session.name,
       })
     },
-    [session, pushActivity],
+    [session, pushActivity, tasks],
   )
 
   const deleteTask = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (!session) return
       let title = 'Task'
-      setTasks((prev) => {
-        const t = prev.find((x) => x.id === id)
-        if (t) title = t.title
-        return prev.filter((x) => x.id !== id)
-      })
+      const t = tasks.find((x) => x.id === id)
+      if (t) title = t.title
+      const ok = await deleteTaskApi(id)
+      if (!ok) return
+      setTasks((prev) => prev.filter((x) => x.id !== id))
       pushActivity({
         type: 'task_deleted',
         message: `Removed “${title}”.`,
         actorName: session.name,
       })
     },
-    [session, pushActivity],
+    [session, pushActivity, tasks],
   )
 
   const moveTaskStatus = useCallback(
-    (taskId: string, newStatus: TaskStatus) => {
+    async (taskId: string, newStatus: TaskStatus) => {
       if (!session) return
       const t = tasks.find((x) => x.id === taskId)
       if (!t || t.status === newStatus) return
+      const ok = await updateTaskStatusApi(taskId, newStatus)
+      if (!ok) return
       setTasks((prev) =>
         prev.map((x) =>
           x.id === taskId ? { ...x, status: newStatus } : x,
@@ -332,6 +369,7 @@ export default function App() {
               completionPercent={completionPercent}
               activeTaskCount={activeTaskCount}
               statIcons={statIcons}
+              taskCreateError={taskCreateError}
               onCreateTask={addTask}
               onCompleteTask={completeTask}
               onDeleteTask={deleteTask}
@@ -346,6 +384,7 @@ export default function App() {
               inProgress={inProgress}
               completed={completed}
               dueSoon={dueSoon}
+              taskCreateError={taskCreateError}
               onCreate={addTask}
               onComplete={completeTask}
               onDelete={deleteTask}

@@ -20,6 +20,8 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [regPassword, setRegPassword] = useState('')
   const [regConfirm, setRegConfirm] = useState('')
   const [registerError, setRegisterError] = useState<string | null>(null)
+  const [loginPending, setLoginPending] = useState(false)
+  const [registerPending, setRegisterPending] = useState(false)
 
   const loginTabId = `${baseId}-tab-login`
   const registerTabId = `${baseId}-tab-register`
@@ -100,15 +102,20 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             <form
               data-testid="login-form"
               className="space-y-4"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault()
                 setLoginError(null)
-                const r = loginUser({
-                  email: loginEmail,
-                  password: loginPassword,
-                })
-                if (r.ok) onAuthenticated()
-                else setLoginError(r.error)
+                setLoginPending(true)
+                try {
+                  const r = await loginUser({
+                    email: loginEmail,
+                    password: loginPassword,
+                  })
+                  if (r.ok) onAuthenticated()
+                  else setLoginError(r.error)
+                } finally {
+                  setLoginPending(false)
+                }
               }}
             >
               <div>
@@ -161,9 +168,10 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               <button
                 type="submit"
                 data-testid="login-submit"
-                className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-violet-500"
+                disabled={loginPending}
+                className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60"
               >
-                Sign in
+                {loginPending ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
           </div>
@@ -177,20 +185,25 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             <form
               data-testid="register-form"
               className="space-y-4"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault()
                 setRegisterError(null)
                 if (regPassword !== regConfirm) {
                   setRegisterError('Passwords do not match.')
                   return
                 }
-                const r = registerUser({
-                  name: regName,
-                  email: regEmail,
-                  password: regPassword,
-                })
-                if (r.ok) onAuthenticated()
-                else setRegisterError(r.error)
+                setRegisterPending(true)
+                try {
+                  const r = await registerUser({
+                    name: regName,
+                    email: regEmail,
+                    password: regPassword,
+                  })
+                  if (r.ok) onAuthenticated()
+                  else setRegisterError(r.error)
+                } finally {
+                  setRegisterPending(false)
+                }
               }}
             >
               <div>
@@ -283,9 +296,10 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               <button
                 type="submit"
                 data-testid="register-submit"
-                className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-violet-500"
+                disabled={registerPending}
+                className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60"
               >
-                Create account
+                {registerPending ? 'Creating account…' : 'Create account'}
               </button>
             </form>
           </div>

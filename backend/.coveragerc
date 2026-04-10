@@ -1,0 +1,10 @@
+[run]
+source = app
+branch = true
+omit =
+    */tests/*
+
+[report]
+show_missing = true
+skip_covered = false
+fail_under = 0

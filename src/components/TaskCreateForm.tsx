@@ -2,15 +2,16 @@ import { useId, useState } from 'react'
 import type { TaskPriority } from '../types'
 
 type TaskCreateFormProps = {
+  createError?: string | null
   onCreate: (input: {
     title: string
     description: string
     dueDate: string
     priority: TaskPriority
-  }) => void
+  }) => boolean | void | Promise<boolean | void>
 }
 
-export function TaskCreateForm({ onCreate }: TaskCreateFormProps) {
+export function TaskCreateForm({ createError, onCreate }: TaskCreateFormProps) {
   const formId = useId()
   const defaultDue = new Date()
   defaultDue.setDate(defaultDue.getDate() + 7)
@@ -23,10 +24,13 @@ export function TaskCreateForm({ onCreate }: TaskCreateFormProps) {
     <form
       data-testid="task-create-form"
       className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900 sm:p-5"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault()
         if (!title.trim()) return
-        onCreate({ title, description, dueDate, priority })
+        const out = await Promise.resolve(
+          onCreate({ title, description, dueDate, priority }),
+        )
+        if (out === false) return
         setTitle('')
         setDescription('')
       }}
@@ -34,6 +38,15 @@ export function TaskCreateForm({ onCreate }: TaskCreateFormProps) {
       <h3 id={`${formId}-heading`} className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
         New task
       </h3>
+      {createError ? (
+        <div
+          role="alert"
+          data-testid="task-create-error"
+          className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-100"
+        >
+          {createError}
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor={`${formId}-title`} className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">

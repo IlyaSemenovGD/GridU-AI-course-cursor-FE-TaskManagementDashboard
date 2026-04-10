@@ -4,16 +4,23 @@ import type { Task } from '../../types'
 
 type TasksPanelProps = {
   tasks: Task[]
+  createError?: string | null
   onCreate: Parameters<typeof TaskCreateForm>[0]['onCreate']
   onComplete: (id: string) => void
   onDelete: (id: string) => void
 }
 
-export function TasksPanel({ tasks, onCreate, onComplete, onDelete }: TasksPanelProps) {
+export function TasksPanel({
+  tasks,
+  createError,
+  onCreate,
+  onComplete,
+  onDelete,
+}: TasksPanelProps) {
   return (
     <>
       <div className="mt-10">
-        <TaskCreateForm onCreate={onCreate} />
+        <TaskCreateForm createError={createError} onCreate={onCreate} />
       </div>
 
       <section className="mt-10" aria-labelledby="tasks-heading">
