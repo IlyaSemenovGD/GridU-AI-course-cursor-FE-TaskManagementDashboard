@@ -34,3 +34,36 @@ def apply_sqlite_migrations() -> None:
                 conn.execute(
                     text("ALTER TABLE tasks ADD COLUMN project_id INTEGER")
                 )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_tasks_user_status "
+                    "ON tasks (user_id, status)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_tasks_project_title "
+                    "ON tasks (project_id, title)"
+                )
+            )
+
+        if "users" in table_names:
+            cols = {c["name"] for c in insp.get_columns("users")}
+            if "role" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN role VARCHAR(20) "
+                        "NOT NULL DEFAULT 'customer'"
+                    )
+                )
+            if "availability_status" not in cols:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN availability_status VARCHAR(20)")
+                )
+            if "expertise_areas" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN expertise_areas TEXT "
+                        "NOT NULL DEFAULT '[]'"
+                    )
+                )

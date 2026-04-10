@@ -2,14 +2,13 @@
 
 from flasgger import swag_from
 from flask import Blueprint, request
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 from sqlalchemy import func
 
 from app.extensions import db
 from app.models.user import User
 from app.schemas.user_schema import user_register_schema, user_schema
 from app.utils.usernames import allocate_username_from_email
-
 bp = Blueprint("auth", __name__)
 
 
@@ -117,3 +116,21 @@ def login():
 
     token = create_access_token(identity=str(user.id))
     return {"access_token": token}, 200
+
+
+@bp.get("/me")
+@jwt_required()
+@swag_from(
+    {
+        "tags": ["Auth"],
+        "summary": "Current user (JWT)",
+        "security": [{"Bearer": []}],
+        "responses": {200: {"description": "User"}, 404: {"description": "Not found"}},
+    }
+)
+def auth_me():
+    user_id = int(get_jwt_identity())
+    user = db.session.get(User, user_id)
+    if user is None:
+        return {"status": "error", "message": "User not found", "code": "NOT_FOUND"}, 404
+    return user_schema.dump(user), 200

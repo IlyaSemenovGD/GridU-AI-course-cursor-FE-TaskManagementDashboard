@@ -4,6 +4,11 @@ from flask import current_app, jsonify
 from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
 
+try:
+    from flask_limiter.errors import RateLimitExceeded
+except ImportError:
+    RateLimitExceeded = None  # type: ignore[misc, assignment]
+
 
 def make_http_exception_response(exc: HTTPException):
     """Build (response, http_status) for a Werkzeug HTTPException."""
@@ -21,11 +26,39 @@ def register_error_handlers(app) -> None:
 
     @app.errorhandler(ValidationError)
     def handle_validation(exc: ValidationError):
-        return jsonify(errors=exc.messages, code="validation_error"), 400
+        return (
+            jsonify(
+                status="error",
+                message="Validation failed",
+                code="VALIDATION_ERROR",
+                errors=exc.messages,
+            ),
+            400,
+        )
+
+    if RateLimitExceeded is not None:
+
+        @app.errorhandler(RateLimitExceeded)
+        def handle_rate_limit(_exc: RateLimitExceeded):
+            return (
+                jsonify(
+                    status="error",
+                    message="Too many requests",
+                    code="RATE_LIMIT_EXCEEDED",
+                ),
+                429,
+            )
 
     @app.errorhandler(Exception)
     def handle_unexpected(exc: Exception):  # noqa: ANN401
         if current_app.config.get("TESTING"):
             raise
         app.logger.exception("Unhandled error: %s", exc)
-        return jsonify(message="Internal server error", code="internal_error"), 500
+        return (
+            jsonify(
+                status="error",
+                message="Internal server error",
+                code="INTERNAL_ERROR",
+            ),
+            500,
+        )

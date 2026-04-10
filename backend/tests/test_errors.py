@@ -42,7 +42,7 @@ def test_validation_error_handler(app):
     r = app.test_client().get("/__pytest__/validation")
     assert r.status_code == 400
     data = r.get_json()
-    assert data.get("code") == "validation_error"
+    assert data.get("code") == "VALIDATION_ERROR"
     assert "errors" in data
 
 
@@ -58,7 +58,7 @@ def test_unhandled_exception_returns_json_when_not_testing():
     r = app.test_client().get("/__pytest__/runtime_boom")
     assert r.status_code == 500
     data = r.get_json()
-    assert data.get("code") == "internal_error"
+    assert data.get("code") == "INTERNAL_ERROR"
     assert "message" in data
 
 

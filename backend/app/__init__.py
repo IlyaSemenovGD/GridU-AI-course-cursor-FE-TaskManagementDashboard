@@ -8,7 +8,8 @@ from flask_cors import CORS
 
 from app.api.routes import register_blueprints
 from app.config import config_by_name
-from app.extensions import db, jwt, ma, socketio
+from app.celery_app import init_celery
+from app.extensions import cache, db, jwt, limiter, ma, socketio
 from app import models  # noqa: F401  # register models with SQLAlchemy metadata
 from app.socketio_events import register_socketio_handlers
 from app.utils.errors import register_error_handlers
@@ -25,6 +26,9 @@ def create_app(config_name: str | None = None) -> Flask:
     db.init_app(app)
     ma.init_app(app)
     jwt.init_app(app)
+    limiter.init_app(app)
+    cache.init_app(app)
+    init_celery(app)
     socketio.init_app(
         app,
         cors_allowed_origins=app.config["CORS_ORIGINS"],
@@ -47,11 +51,11 @@ def create_app(config_name: str | None = None) -> Flask:
         template={
             "swagger": "2.0",
             "info": {
-                "title": "Task Management API",
+                "title": "Task & Support API",
                 "description": (
-                    "JWT auth, tasks, projects, team members, notifications, "
-                    "and WebSocket real-time events (namespace default, connect with "
-                    "`auth: { token }` or `?token=`)."
+                    "JWT auth (24h access tokens), task management, customer support "
+                    "tickets, projects, notifications, and WebSocket events "
+                    "(namespace default, connect with `auth: { token }` or `?token=`)."
                 ),
                 "version": "2.0.0",
             },
@@ -77,5 +81,33 @@ def create_app(config_name: str | None = None) -> Flask:
         """Create database tables."""
         db.create_all()
         apply_sqlite_migrations()
+
+    @app.cli.command("create-admin")
+    def create_admin() -> None:
+        """Create an admin user (interactive env vars or CLI args via flask shell)."""
+        import click
+        from sqlalchemy import func
+
+        from app.models.user import User, UserRole
+        from app.utils.usernames import allocate_username_from_email
+
+        email = click.prompt("Email")
+        password = click.prompt("Password", hide_input=True)
+        name = click.prompt("Full name", default="Administrator")
+
+        email_norm = email.strip().lower()
+        if User.query.filter(func.lower(User.email) == email_norm).first():
+            click.echo("User already exists.")
+            return
+        u = User(
+            username=allocate_username_from_email(email_norm),
+            email=email_norm,
+            full_name=name.strip(),
+            role=UserRole.ADMIN.value,
+        )
+        u.set_password(password)
+        db.session.add(u)
+        db.session.commit()
+        click.echo(f"Admin created id={u.id}")
 
     return app

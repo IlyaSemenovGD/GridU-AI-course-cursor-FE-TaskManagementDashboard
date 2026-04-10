@@ -7,6 +7,8 @@ export type Session = {
   email: string
   name: string
   accessToken: string
+  /** From API `users/me`: customer | agent | admin */
+  role?: string
 }
 
 type ApiUser = {
@@ -14,6 +16,7 @@ type ApiUser = {
   email: string
   full_name: string
   username: string
+  role?: string
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -47,6 +50,7 @@ function sessionFromApiUser(user: ApiUser, accessToken: string): Session {
     email: user.email,
     name: user.full_name || user.username,
     accessToken,
+    role: user.role ?? 'customer',
   }
 }
 
@@ -118,6 +122,7 @@ export async function registerUser(input: {
     email: data.email ?? email,
     full_name: data.full_name ?? name,
     username: data.username ?? email,
+    role: (data as { role?: string }).role,
   }
   setSession(sessionFromApiUser(user, token))
   return { ok: true }
@@ -162,4 +167,14 @@ export async function loginUser(input: {
 
 export function logoutUser() {
   setSession(null)
+}
+
+/** Re-fetch `/api/users/me` to refresh `role` and profile fields (e.g. after backend upgrades). */
+export async function refreshSessionProfile(): Promise<Session | null> {
+  const s = getSession()
+  if (!s?.accessToken) return null
+  const next = await fetchMe(s.accessToken)
+  if (!next) return null
+  setSession(next)
+  return next
 }

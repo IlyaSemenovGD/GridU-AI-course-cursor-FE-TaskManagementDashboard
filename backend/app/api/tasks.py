@@ -13,6 +13,12 @@ from app.schemas.task_schema import (
     tasks_schema,
 )
 from app.services.task_access import can_access_task, task_query_visible_to_user
+from app.services.task_list_cache import (
+    get_task_list_json,
+    invalidate_for_task,
+    set_task_list_json,
+)
+from app.tasks.background import notify_task_created
 
 bp = Blueprint("tasks", __name__)
 
@@ -33,8 +39,13 @@ def _current_user_id() -> int:
 )
 def list_tasks():
     uid = _current_user_id()
+    cached = get_task_list_json(uid)
+    if cached is not None:
+        return cached, 200
     rows = task_query_visible_to_user(uid).order_by(Task.title).all()
-    return tasks_schema.dump(rows), 200
+    data = tasks_schema.dump(rows)
+    set_task_list_json(uid, data)
+    return data, 200
 
 
 @bp.post("/tasks")
@@ -70,6 +81,8 @@ def create_task():
     )
     db.session.add(task)
     db.session.commit()
+    invalidate_for_task(task)
+    notify_task_created.delay(task.id)
     return task_schema.dump(task), 201
 
 
@@ -104,6 +117,7 @@ def update_task(task_id: str):
     for key, value in patch.items():
         setattr(task, key, value)
     db.session.commit()
+    invalidate_for_task(task)
     return task_schema.dump(task), 200
 
 
@@ -125,6 +139,7 @@ def delete_task(task_id: str):
     task = Task.query.filter_by(id=task_id).first()
     if task is None or not can_access_task(uid, task):
         return {"message": "Task not found"}, 404
+    invalidate_for_task(task)
     db.session.delete(task)
     db.session.commit()
     return "", 204

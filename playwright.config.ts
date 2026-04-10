@@ -37,7 +37,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `npx --yes wait-on@7.4.0 http://127.0.0.1:5000/health && npm run dev -- --host 127.0.0.1 --port ${E2E_DEV_PORT}`,
+      command: `npx wait-on http://127.0.0.1:5000/health && npm run dev -- --host 127.0.0.1 --port ${E2E_DEV_PORT}`,
       url: e2eOrigin,
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',

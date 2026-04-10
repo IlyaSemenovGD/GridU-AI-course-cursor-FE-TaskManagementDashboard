@@ -7,7 +7,8 @@ import { TasksWorkspace } from './components/dashboard/TasksWorkspace'
 import { Header } from './components/Header'
 import { SettingsPanel } from './components/SettingsPanel'
 import { Sidebar, type SidebarNavId } from './components/Sidebar'
-import { getSession, logoutUser, type Session } from './lib/auth'
+import { SupportTicketsPanel } from './components/support/SupportTicketsPanel'
+import { getSession, logoutUser, refreshSessionProfile, type Session } from './lib/auth'
 import { loadActivities, saveActivities } from './lib/activityStore'
 import {
   completeTaskApi,
@@ -85,6 +86,11 @@ function headerCopy(nav: SidebarNavId): { title: string; description: string } {
         title: 'Team',
         description: 'People and invites',
       }
+    case 'support':
+      return {
+        title: 'Support tickets',
+        description: 'Customer support requests and SLA tracking',
+      }
     default:
       return {
         title: 'Dashboard',
@@ -131,6 +137,12 @@ export default function App() {
     if (!session) return
     saveActivities(session.userId, activities)
   }, [session, activities])
+
+  useEffect(() => {
+    void refreshSessionProfile().then((next) => {
+      if (next) setSession(next)
+    })
+  }, [])
 
   const toggleTheme = useCallback(() => {
     setDarkMode((prev) => {
@@ -394,6 +406,14 @@ export default function App() {
             <KanbanBoard tasks={tasks} onTaskStatusChange={moveTaskStatus} />
           ) : activeNav === 'team' ? (
             <TeamPage currentUserName={session.name} />
+          ) : activeNav === 'support' ? (
+            <SupportTicketsPanel
+              session={session}
+              onUnauthorized={() => {
+                logoutUser()
+                setSession(null)
+              }}
+            />
           ) : (
             <CalendarPlaceholder />
           )}

@@ -30,6 +30,10 @@ test.describe('Sidebar navigation', () => {
     await expect(page.getByRole('heading', { name: 'My tasks' })).toBeVisible()
     await expect(page.getByTestId('tasks-workspace')).toBeVisible()
 
+    await nav.getByRole('button', { name: 'Support tickets' }).click()
+    await expect(page.getByRole('heading', { name: 'Support tickets' })).toBeVisible()
+    await expect(page.getByTestId('support-tickets-panel')).toBeVisible()
+
     await nav.getByRole('button', { name: 'Board', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Board', exact: true })).toBeVisible()
     await expect(page.getByTestId('kanban-board')).toBeVisible()

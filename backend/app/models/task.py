@@ -7,6 +7,10 @@ from app.extensions import db
 
 class Task(db.Model):
     __tablename__ = "tasks"
+    __table_args__ = (
+        db.Index("ix_tasks_user_status", "user_id", "status"),
+        db.Index("ix_tasks_project_title", "project_id", "title"),
+    )
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)

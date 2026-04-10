@@ -21,6 +21,8 @@ from app.schemas.task_schema import (
     tasks_schema,
 )
 from app.services.notification_service import notify_project_except
+from app.services.task_list_cache import invalidate_for_project, invalidate_for_task
+from app.tasks.background import notify_task_created
 
 bp = Blueprint("projects", __name__)
 
@@ -123,6 +125,7 @@ def update_project(project_id: int):
 def delete_project(project_id: int):
     uid = _uid()
     p = _require_owner(project_id, uid)
+    invalidate_for_project(project_id)
     Task.query.filter_by(project_id=project_id).delete()
     ProjectMember.query.filter_by(project_id=project_id).delete()
     db.session.delete(p)
@@ -177,6 +180,7 @@ def add_member(project_id: int):
     )
     db.session.add(m)
     db.session.commit()
+    invalidate_for_project(project_id)
     p = db.session.get(Project, project_id)
     notify_project_except(
         project_id,
@@ -213,6 +217,7 @@ def remove_member(project_id: int, member_user_id: int):
         abort(403, description="Only the owner can remove members (or leave yourself)")
     db.session.delete(m)
     db.session.commit()
+    invalidate_for_project(project_id)
     return "", 204
 
 
@@ -248,6 +253,8 @@ def create_project_task(project_id: int):
     )
     db.session.add(task)
     db.session.commit()
+    invalidate_for_task(task)
+    notify_task_created.delay(task.id)
     notify_project_except(
         project_id,
         event_type="task_created",
@@ -277,6 +284,7 @@ def update_project_task(project_id: int, task_id: str):
     for key, value in patch.items():
         setattr(task, key, value)
     db.session.commit()
+    invalidate_for_task(task)
     notify_project_except(
         project_id,
         event_type="task_updated",
@@ -298,6 +306,7 @@ def delete_project_task(project_id: int, task_id: str):
     if task is None:
         return {"message": "Task not found"}, 404
     title = task.title
+    invalidate_for_task(task)
     db.session.delete(task)
     db.session.commit()
     notify_project_except(
