@@ -10,7 +10,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? 'github' : [['html', { open: 'never' }]],
+  reporter: [
+    ...(process.env.CI ? [['github' as const]] : []),
+    ['html', { open: 'never', outputFolder: 'qa-reports/playwright-report' }],
+    ['junit', { outputFile: 'qa-reports/playwright-junit.xml' }],
+  ],
   use: {
     baseURL: e2eOrigin,
     trace: 'on-first-retry',

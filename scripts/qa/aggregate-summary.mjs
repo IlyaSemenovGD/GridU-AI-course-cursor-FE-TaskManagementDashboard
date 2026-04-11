@@ -31,6 +31,24 @@ async function readText(path) {
   }
 }
 
+/** Parse Playwright / JUnit XML for totals (attribute order may vary). */
+function parseJunitTotals(xml) {
+  if (!xml) return null
+  const line =
+    xml.split('\n').find((l) => l.includes('<testsuites') && l.includes('tests=')) ||
+    xml.split('\n').find((l) => l.includes('<testsuite') && l.includes('tests='))
+  if (!line) return null
+  const tests = line.match(/\btests="(\d+)"/)?.[1]
+  const failures = line.match(/\bfailures="(\d+)"/)?.[1]
+  const errors = line.match(/\berrors="(\d+)"/)?.[1]
+  if (tests == null) return null
+  return {
+    tests: Number(tests),
+    failures: Number(failures ?? 0),
+    errors: Number(errors ?? 0),
+  }
+}
+
 function pylintScoreFromText(text) {
   if (!text) return null
   const m = text.match(/rated at ([0-9.]+)\/10/)
@@ -48,6 +66,7 @@ async function main() {
   const k6 = await readJson(join(outDir, 'k6-summary.json'))
   const lighthouseManifest = await readJson(join(outDir, 'lighthouse', 'manifest.json'))
   const zapJson = await readJson(join(outDir, 'zap-report.json'))
+  const playwrightJunit = await readText(join(outDir, 'playwright-junit.xml'))
 
   const eslintProblems = Array.isArray(eslint)
     ? eslint.reduce((n, f) => {
@@ -112,6 +131,9 @@ async function main() {
             alerts: zapJson.site?.[0]?.alerts?.length,
           }
         : null,
+    },
+    e2e: {
+      playwright: parseJunitTotals(playwrightJunit),
     },
   }
 

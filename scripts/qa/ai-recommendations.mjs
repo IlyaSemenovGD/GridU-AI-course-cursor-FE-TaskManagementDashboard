@@ -34,6 +34,12 @@ function heuristics(s) {
   if (perf != null && perf < 0.5) lines.push('Lighthouse performance score is low; audit bundle size, images, and long tasks.')
   const zap = s.security?.zap?.alerts
   if (zap != null && zap > 0) lines.push(`OWASP ZAP reported ${zap} alert group(s); triage high/critical items.`)
+  const pw = s.e2e?.playwright
+  if (pw && pw.tests > 0 && pw.failures + pw.errors > 0) {
+    lines.push(
+      `Playwright E2E: ${pw.failures + pw.errors} failed/errored of ${pw.tests} tests; see qa-reports/playwright-report and Page Objects under e2e/pages/.`,
+    )
+  }
   if (lines.length === 0) lines.push('No major red flags in aggregated metrics; keep monitoring coverage and response times.')
   return lines
 }

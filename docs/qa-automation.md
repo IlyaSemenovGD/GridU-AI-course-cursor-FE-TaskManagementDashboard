@@ -1,59 +1,85 @@
 # QA automation system
 
-This repository runs a dedicated **QA automation** workflow (`.github/workflows/qa.yml`) plus the existing PR and CI/CD pipelines.
+## Overview
 
-## What runs where
+| Layer | Tools |
+|-------|--------|
+| **E2E (Page Object Model)** | Playwright — `e2e/pages/`, `e2e/fixtures.ts`, specs in `e2e/*.spec.ts` |
+| **Unit tests** | Vitest (frontend), pytest (backend) |
+| **Lint** | ESLint, Pylint |
+| **Security** | Snyk, pip-audit, Bandit, OWASP ZAP baseline |
+| **Performance** | Lighthouse CI, k6 |
+| **Reports** | `qa-reports/` — JUnit, coverage JSON, HTML dashboard, Playwright HTML |
 
-| Area | Tool | Where |
-|------|------|--------|
-| Frontend unit tests | **Vitest** (Jest-compatible API; works with Vite and `import.meta.env`) | `npm test`, `npm run test:coverage` |
-| Backend unit tests | **pytest** + **pytest-cov** | `python -m pytest` in `backend/` |
-| Frontend lint | **ESLint** | `npm run lint`, `npm run lint:report` |
-| Backend lint | **Pylint** | `pylint app` (config: `backend/.pylintrc`) |
-| Dependency / SAST | **Snyk** (optional), **pip-audit**, **Bandit** | PR workflow + `qa.yml` |
-| DAST | **OWASP ZAP** baseline (Docker, host network) | `qa.yml` |
-| Frontend perf / a11y | **Lighthouse CI** (`@lhci/cli`) | `npm run lhci` after `npm run build` |
-| API load / smoke | **k6** | `qa/k6/api-smoke.js` |
-| Reporting | HTML dashboard + JSON summary | `scripts/qa/*.mjs` |
-| AI suggestions | **OpenAI** Chat Completions (optional) | `OPENAI_API_KEY` secret |
+Workflow: **`.github/workflows/qa.yml`** (also PR/CI workflows for faster gates).
 
-## Local commands
+## Page Object Model (Playwright)
 
-```bash
-# Frontend
-npm ci
-npm run lint
-npm run test
-npm run test:coverage
+- **`e2e/pages/BasePage.ts`** — shared `page` and `goto`.
+- **`e2e/pages/AuthPage.ts`** — login / registration (`data-testid` selectors).
+- **`e2e/pages/AppShellPage.ts`** — workspace nav, sign-out, task helpers.
+- **`e2e/fixtures.ts`** — `test` extended with `authPage` and `appShell`.
 
-# Backend
-cd backend && pip install -r requirements.txt -r requirements-ci.txt
-python -m pytest tests/ -q
-pylint app
+Use in specs:
 
-# Lighthouse (needs build first)
-npm run build && npm run lhci
+```ts
+import { expect, test } from './fixtures'
 
-# Merge reports + dashboard + AI (after tests wrote under qa-reports/)
-npm run qa:aggregate
-npm run qa:recommendations   # uses OPENAI_API_KEY if set
-npm run qa:dashboard
+test('example', async ({ page, authPage, appShell }) => {
+  await page.goto('/')
+  await authPage.register({ name: 'T', email: 'a@b.c', password: 'x12345678' })
+  await appShell.signOut()
+})
 ```
 
-Open `qa-reports/dashboard/index.html` in a browser after generation.
+Legacy helpers in **`e2e/helpers.ts`** delegate to the same page objects (`registerAndLandOnDashboard`, `signOut`, `workspaceNav`, …).
+
+## Pylint gate
+
+`npm run qa:run` and CI use **`pylint app --fail-under=8.5`**: the process exits **0** when the score is at least **8.5/10**, even if there are style messages. (A plain `pylint app` run often exits **30** because of message bitmasks—that is expected and is why the script uses `--fail-under`.)
+
+## Run all checks locally
+
+From the repo root:
+
+```bash
+npm ci
+cd backend && python3 -m pip install -r requirements.txt -r requirements-ci.txt && cd ..
+node scripts/qa/run-all.mjs
+```
+
+Or:
+
+```bash
+npm run qa:run
+```
+
+**Skip heavy steps** (faster iteration):
+
+| Variable | Effect |
+|----------|--------|
+| `QA_SKIP_E2E=1` | Skip Playwright |
+| `QA_SKIP_LIGHTHOUSE=1` | Skip `npm run build` + Lighthouse |
+| `QA_SKIP_BACKEND=1` | Skip pytest + pylint |
+
+**Regenerate reports only** (after artifacts already exist under `qa-reports/`):
+
+```bash
+npm run qa:report
+```
+
+Open **`qa-reports/dashboard/index.html`** (uses Chart.js from CDN for bar + radar charts). E2E HTML: **`qa-reports/playwright-report/index.html`**.
 
 ## GitHub Actions secrets (optional)
 
 | Secret | Purpose |
 |--------|---------|
-| `SNYK_TOKEN` | Enable Snyk in QA and PR security jobs |
-| `OPENAI_API_KEY` | GPT-based improvement bullets in `ai-recommendations` |
-| `OPENAI_MODEL` | Repository variable (optional); defaults to `gpt-4o-mini` |
+| `SNYK_TOKEN` | Snyk |
+| `OPENAI_API_KEY` | GPT bullets in `ai-recommendations` |
+| `OPENAI_MODEL` | Repo variable; default `gpt-4o-mini` |
 
-## Workflow triggers
+## Triggers
 
-`qa.yml` runs on pushes and pull requests to `main`/`master`, weekly (cron), and `workflow_dispatch`. It is heavier than the default PR workflow (ZAP + Lighthouse + k6); adjust `on:` in `qa.yml` if you want QA only on `main` or on a schedule.
+`qa.yml`: `push` / `pull_request` to `main`/`master`, weekly cron, `workflow_dispatch`.
 
-## Artifacts
-
-The final job uploads **`qa-dashboard`**: `summary.json`, `dashboard/index.html`, and AI recommendation files. Download the artifact from the workflow run to review the HTML report offline.
+Adjust `on:` in `qa.yml` if the full suite (E2E + ZAP + Lighthouse) should run only on `main` or on a schedule.

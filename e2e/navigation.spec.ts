@@ -1,13 +1,10 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 import {
   clearClientStorage,
   registerAndLandOnDashboard,
   uniqueEmail,
+  workspaceNav,
 } from './helpers'
-
-function workspaceNav(page: Page) {
-  return page.getByRole('navigation', { name: 'Workspace' })
-}
 
 test.describe('Sidebar navigation', () => {
   test.beforeEach(async ({ page }) => {

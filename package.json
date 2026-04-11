@@ -17,7 +17,9 @@
     "lhci": "lhci autorun",
     "qa:dashboard": "node scripts/qa/build-dashboard.mjs",
     "qa:recommendations": "node scripts/qa/ai-recommendations.mjs",
-    "qa:aggregate": "node scripts/qa/aggregate-summary.mjs"
+    "qa:aggregate": "node scripts/qa/aggregate-summary.mjs",
+    "qa:run": "node scripts/qa/run-all.mjs",
+    "qa:report": "npm run qa:aggregate && npm run qa:recommendations && npm run qa:dashboard"
   },
   "dependencies": {
     "react": "^19.2.4",

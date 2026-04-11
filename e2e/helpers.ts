@@ -1,4 +1,7 @@
-import { expect, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+
+import { AppShellPage } from './pages/AppShellPage'
+import { AuthPage, type RegisterOpts } from './pages/AuthPage'
 
 export function uniqueEmail(workerIndex: number) {
   return `e2e-w${workerIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}@test.local`
@@ -31,27 +34,22 @@ export async function clearClientStorage(page: Page) {
   await page.reload({ waitUntil: 'load' })
 }
 
-export async function registerAndLandOnDashboard(
-  page: Page,
-  opts: { name: string; email: string; password: string },
-) {
-  await page.getByTestId('auth-tab-register').click()
-  await page.getByTestId('register-name').fill(opts.name)
-  await page.getByTestId('register-email').fill(opts.email)
-  await page.getByTestId('register-password').fill(opts.password)
-  await page.getByTestId('register-password-confirm').fill(opts.password)
-  await page.getByTestId('register-submit').click()
-  await expect(page.getByTestId('app-shell')).toBeVisible()
+/** Delegates to {@link AuthPage.register} (Page Object Model). */
+export async function registerAndLandOnDashboard(page: Page, opts: RegisterOpts) {
+  await new AuthPage(page).register(opts)
 }
 
+/** Delegates to {@link AuthPage.login}. */
 export async function fillLogin(page: Page, email: string, password: string) {
-  await page.getByTestId('login-email').fill(email)
-  await page.getByTestId('login-password').fill(password)
-  await page.getByTestId('login-submit').click()
+  await new AuthPage(page).login(email, password)
 }
 
+/** Delegates to {@link AppShellPage.signOut}. */
 export async function signOut(page: Page) {
-  await page.getByTestId('user-menu-button').click()
-  await page.getByTestId('sign-out-button').click()
-  await expect(page.getByTestId('auth-screen')).toBeVisible()
+  await new AppShellPage(page).signOut()
+}
+
+/** Sidebar workspace navigation (same as `AppShellPage#workspaceNav()`). */
+export function workspaceNav(page: Page) {
+  return new AppShellPage(page).workspaceNav()
 }

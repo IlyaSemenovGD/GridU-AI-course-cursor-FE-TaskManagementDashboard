@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import {
   clearClientStorage,
   registerAndLandOnDashboard,
@@ -11,10 +11,10 @@ test.describe('Dashboard collaboration', () => {
     await page.setViewportSize({ width: 1280, height: 720 })
   })
 
-  test('shows project overview and key dashboard sections', async ({ page }, testInfo) => {
+  test('shows project overview and key dashboard sections', async ({ page, authPage }, testInfo) => {
     const email = uniqueEmail(testInfo.workerIndex)
     await page.goto('/')
-    await registerAndLandOnDashboard(page, {
+    await authPage.register({
       name: 'Dash User',
       email,
       password: 'dashpass12',
