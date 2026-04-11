@@ -8,7 +8,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from app.extensions import db
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import Product
-from app.models.user import User, UserRole
+from app.models.user import UserRole
 from app.schemas.order_schema import order_create_schema, order_status_schema
 from app.services.ticket_access import get_user_or_404
 

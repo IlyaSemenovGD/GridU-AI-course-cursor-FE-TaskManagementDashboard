@@ -1,0 +1,33 @@
+[MAIN]
+py-version = 3.11
+jobs = 1
+load-plugins =
+ignore = tests,.venv
+
+[MESSAGES CONTROL]
+disable =
+    duplicate-code,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-lines,
+    too-many-instance-attributes,
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    import-outside-toplevel,
+    broad-except,
+    cyclic-import,
+
+[FORMAT]
+max-line-length = 120
+
+[DESIGN]
+max-args = 12
+max-attributes = 12
+
+[SIMILARITIES]
+min-similarity-lines = 6

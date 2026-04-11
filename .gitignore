@@ -13,6 +13,10 @@ dist-ssr
 *.local
 .env
 
+# QA automation reports (generated locally / CI artifacts)
+qa-reports
+.lighthouseci
+
 # Playwright
 playwright-report
 test-results

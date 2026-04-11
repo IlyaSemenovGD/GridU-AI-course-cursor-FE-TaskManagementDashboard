@@ -52,7 +52,7 @@ def register_error_handlers(app) -> None:
     @app.errorhandler(Exception)
     def handle_unexpected(exc: Exception):  # noqa: ANN401
         if current_app.config.get("TESTING"):
-            raise
+            raise exc
         app.logger.exception("Unhandled error: %s", exc)
         return (
             jsonify(

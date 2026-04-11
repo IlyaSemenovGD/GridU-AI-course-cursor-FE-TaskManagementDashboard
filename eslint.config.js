@@ -8,6 +8,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    'qa-reports/**',
     'e2e/**',
     'playwright.config.ts',
     'backend/**',

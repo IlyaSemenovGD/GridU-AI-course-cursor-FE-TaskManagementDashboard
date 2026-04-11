@@ -1,6 +1,6 @@
 """Notification serialization."""
 
-from marshmallow import Schema, fields
+from marshmallow import fields
 
 from app.extensions import db, ma
 from app.models.notification import Notification

@@ -1,7 +1,8 @@
 """Sanitize user-generated text (XSS mitigation)."""
 
-import bleach
 import html
+
+import bleach
 
 
 def sanitize_plain(text: str, *, max_length: int | None = None) -> str:

@@ -81,7 +81,7 @@ def create_product():
 @bp.put("/products/<int:product_id>")
 @jwt_required()
 def update_product(product_id: int):
-    actor, err = _require_admin()
+    _, err = _require_admin()
     if err:
         return err
     p = db.session.get(Product, product_id)
@@ -118,7 +118,7 @@ def update_product(product_id: int):
 @bp.delete("/products/<int:product_id>")
 @jwt_required()
 def delete_product(product_id: int):
-    actor, err = _require_admin()
+    _, err = _require_admin()
     if err:
         return err
     p = db.session.get(Product, product_id)

@@ -602,5 +602,3 @@ def upload_attachment(ticket_id: int):
         "file_size": att.file_size,
         "mime_type": att.mime_type,
     }, 201
-
-
