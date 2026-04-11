@@ -1,4 +1,5 @@
-# Full-stack CI/CD: cache, parallel tests, security, perf budget, blue/green-style deploy, smoke, rollback
+# Full-stack CI/CD: cache, sharded tests, security, Docker health, deploy, smoke, rollback
+# Optional secrets: SNYK_TOKEN, SLACK_WEBHOOK_URL, DEPLOY_HEALTH_URL, MONITORING_DEPLOY_WEBHOOK
 name: CI CD
 
 on:
@@ -54,7 +55,45 @@ jobs:
           if-no-files-found: error
 
   backend:
-    name: Backend — pytest (parallel + performance)
+    name: Backend — pytest shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      FLASK_ENV: testing
+      PYTHONPATH: .
+      PYTEST_SPLITS: "4"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-ci.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-ci.txt
+
+      - name: Tests (pytest-split, excludes performance)
+        run: |
+          python -m pytest tests/ -q --tb=short \
+            -m "not performance" \
+            --splits "${{ env.PYTEST_SPLITS }}" --group ${{ matrix.shard }}
+
+  backend-perf:
+    name: Backend — performance budget (serial)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -80,14 +119,11 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-ci.txt
 
-      - name: Parallel tests (exclude performance budget)
-        run: python -m pytest tests/ -q --tb=short -n auto -m "not performance"
-
-      - name: Performance budget tests (serial)
+      - name: Performance budget tests
         run: python -m pytest tests/ -q --tb=short -n 0 -m performance
 
-  security:
-    name: Security — audit & Bandit
+  security-js:
+    name: Security — npm audit & Snyk (JS)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -100,11 +136,28 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install frontend deps
+      - name: Install dependencies
         run: npm ci
 
       - name: npm audit
         run: npm audit --audit-level=moderate
+
+      - name: Snyk test (Node)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "${SNYK_TOKEN:-}" ]; then
+            echo "::notice::SNYK_TOKEN not set — skipping Snyk (Node)."
+            exit 0
+          fi
+          npx -y snyk test --severity-threshold=high --all-projects
+
+  security-py:
+    name: Security — pip-audit, Bandit & Snyk (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -126,10 +179,71 @@ jobs:
         working-directory: backend
         run: bandit -r app -c .bandit.yml -q -ll
 
+      - name: Setup Node (Snyk CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Snyk test (Python)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        working-directory: backend
+        run: |
+          if [ -z "${SNYK_TOKEN:-}" ]; then
+            echo "::notice::SNYK_TOKEN not set — skipping Snyk (Python)."
+            exit 0
+          fi
+          npx -y snyk test --file=requirements.txt --severity-threshold=high
+
+  docker:
+    name: Docker — build (GHA cache) & /health smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (layer cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: false
+          load: true
+          tags: task-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke — container responds on /health
+        run: |
+          docker run -d --name task-api-smoke -p 127.0.0.1:5000:5000 task-api:ci
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:5000/health; then
+              echo "Health OK"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Health check failed"
+          docker logs task-api-smoke || true
+          exit 1
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f task-api-smoke || true
+
   deploy-green:
     name: Deploy — green slot (candidate)
     runs-on: ubuntu-latest
-    needs: [frontend, backend, security]
+    needs:
+      - frontend
+      - backend
+      - backend-perf
+      - security-js
+      - security-py
+      - docker
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
@@ -201,3 +315,43 @@ jobs:
           echo "A prior stage failed — run your rollback: re-point LB to BLUE, kubectl rollout undo,"
           echo "re-deploy previous artifact from GHCR/S3, or restore last Terraform state."
           exit 1
+
+  notify:
+    name: Notify Slack on failure
+    runs-on: ubuntu-latest
+    needs:
+      - frontend
+      - backend
+      - backend-perf
+      - security-js
+      - security-py
+      - docker
+      - deploy-green
+      - promote-traffic
+      - smoke-and-monitor
+    if: |
+      always() && (
+        needs.frontend.result == 'failure' ||
+        needs.backend.result == 'failure' ||
+        needs.backend-perf.result == 'failure' ||
+        needs.security-js.result == 'failure' ||
+        needs.security-py.result == 'failure' ||
+        needs.docker.result == 'failure' ||
+        needs.deploy-green.result == 'failure' ||
+        needs.promote-traffic.result == 'failure' ||
+        needs.smoke-and-monitor.result == 'failure'
+      )
+    steps:
+      - name: Post to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::notice::SLACK_WEBHOOK_URL not set — skipping Slack."
+            exit 0
+          fi
+          curl -fsS -X POST -H 'Content-type: application/json' \
+            --data "$(jq -n \
+              --arg text "❌ *${{ github.workflow }}* failed for ${{ github.repository }}@${{ github.ref_name }} — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run>" \
+              '{text: $text}')" \
+            "$SLACK_WEBHOOK_URL"

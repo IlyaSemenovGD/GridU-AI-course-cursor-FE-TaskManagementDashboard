@@ -1,4 +1,5 @@
 # Installed only in CI for faster, safer pipelines (not required for local dev).
 pytest-xdist>=3.5.0
+pytest-split>=0.9.0
 pip-audit>=2.7.0
 bandit[toml]>=1.7.0
