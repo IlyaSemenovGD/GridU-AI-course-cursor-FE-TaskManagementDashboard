@@ -44,6 +44,24 @@ function setSession(session: Session | null) {
   else localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
+/** Replace stored session (e.g. after profile update). Same token, updated name/email. */
+export function persistSession(session: Session | null): void {
+  setSession(session)
+}
+
+/** Merge API user fields into the current session without changing the token. */
+export function mergeProfileIntoSession(
+  prev: Session,
+  user: { email: string; full_name: string; username: string; role?: string },
+): Session {
+  return {
+    ...prev,
+    email: user.email,
+    name: user.full_name || user.username,
+    role: user.role ?? prev.role,
+  }
+}
+
 function sessionFromApiUser(user: ApiUser, accessToken: string): Session {
   return {
     userId: String(user.id),

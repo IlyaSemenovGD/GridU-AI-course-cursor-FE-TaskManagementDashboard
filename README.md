@@ -11,7 +11,7 @@ A single-page **task management and team collaboration** UI built with React, ba
 - **My tasks** — Same task list and stats in a task-focused layout; tasks are loaded and saved through the **REST API**.
 - **Board** — Kanban columns **To do**, **In progress**, and **Done**; drag cards between columns to update status (native HTML5 drag-and-drop).
 - **Team / Calendar** — Team roster view and a calendar placeholder for future integration.
-- **Settings** — Tabbed panels (Profile, Notifications, Privacy, Appearance) with forms, toggles, and selects; light/dark theme can be aligned with the header toggle.
+- **Settings** — Tabbed panels (Profile, Notifications, Privacy, Appearance) with forms, toggles, and selects; light/dark theme can be aligned with the header toggle. **Profile** saves display name and email via `PUT /api/users/me`; **Change password** uses `POST /api/users/me/password`; **Privacy → Danger zone** deletes the account with `DELETE /api/users/me` (password required). Registration enforces passwords ≥ 8 characters.
 - **Theming** — Tailwind CSS with a `dark` class on `<html>`, persisted preference, and responsive layout from mobile to desktop.
 
 ---

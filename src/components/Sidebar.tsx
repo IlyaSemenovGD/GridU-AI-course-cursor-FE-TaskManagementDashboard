@@ -16,6 +16,7 @@ function useMediaQuery(query: string) {
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: IconLayout },
+  { id: 'store', label: 'Store', icon: IconShoppingBag },
   { id: 'tasks', label: 'My tasks', icon: IconCheckSquare },
   { id: 'support', label: 'Support tickets', icon: IconSupport },
   { id: 'board', label: 'Board', icon: IconKanban },
@@ -148,6 +149,17 @@ function IconLayout(props: { className?: string }) {
       <rect x="14" y="3" width="7" height="5" rx="1" />
       <rect x="14" y="12" width="7" height="9" rx="1" />
       <rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  )
+}
+
+function IconShoppingBag(props: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <path d="M6 7h15l-1.5 9h-12z" />
+      <path d="M9 7V5a3 3 0 016 0v2" />
+      <circle cx="9" cy="20" r="1" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="20" r="1" fill="currentColor" stroke="none" />
     </svg>
   )
 }

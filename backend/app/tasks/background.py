@@ -6,7 +6,9 @@ import logging
 
 from app.celery_app import celery
 from app.extensions import db
+from app.models.order import Order
 from app.models.task import Task
+from app.models.user import User
 from app.services.email_stub import send_email
 from app.services.task_list_cache import invalidate_for_task_id
 
@@ -38,3 +40,38 @@ def invalidate_task_cache_by_id(task_id: str) -> None:
 def ping_worker() -> str:
     """Health check for Celery workers."""
     return "pong"
+
+
+@celery.task(name="tasks.send_order_confirmation_email")
+def send_order_confirmation_email(order_id: int) -> None:
+    """Send order confirmation after successful checkout (stub email)."""
+    order = db.session.get(Order, order_id)
+    if order is None:
+        logger.warning("send_order_confirmation_email: missing order %s", order_id)
+        return
+    user = db.session.get(User, order.user_id)
+    if user is None:
+        return
+    lines_desc = []
+    for li in order.items:
+        name = li.product.name if li.product else f"product #{li.product_id}"
+        lines_desc.append(
+            f"  - {name} x{li.quantity} @ ${li.unit_price_cents / 100:.2f}"
+        )
+    body = (
+        f"Hi {user.full_name},\n\n"
+        f"Your order #{order.id} is confirmed.\n"
+        f"Payment ref: {order.payment_reference or 'n/a'}\n"
+        f"Subtotal: ${order.subtotal_cents / 100:.2f}\n"
+        f"Discount: ${order.discount_cents / 100:.2f}\n"
+        f"Total charged: ${order.total_cents / 100:.2f}\n\n"
+        "Items:\n"
+        + "\n".join(lines_desc)
+        + "\n\nThank you for shopping with TaskFlow."
+    )
+    send_email(
+        user.email,
+        f"Order #{order.id} — confirmation",
+        body,
+        meta={"order_id": order_id, "user_id": user.id},
+    )

@@ -43,3 +43,40 @@ def auth_headers(client):
         return {"Authorization": f"Bearer {token}"}
 
     return _register
+
+
+@pytest.fixture
+def admin_headers(client, auth_headers):
+    """JWT for a user promoted to admin (for catalog/order admin tests)."""
+
+    headers = auth_headers(email="adminuser@example.com", name="Admin User")
+
+    from app.extensions import db
+    from app.models.user import User, UserRole
+
+    with client.application.app_context():
+        u = User.query.filter_by(email="adminuser@example.com").first()
+        assert u is not None
+        u.role = UserRole.ADMIN.value
+        db.session.commit()
+
+    return headers
+
+
+@pytest.fixture
+def customer_headers(auth_headers):
+    return auth_headers(email="buyer@example.com", name="Buyer")
+
+
+@pytest.fixture
+def client_ratelimit():
+    """App client with rate limiting enabled (see TestingRateLimitConfig)."""
+    application = create_app("testing_ratelimit")
+    with application.app_context():
+        db.drop_all()
+        db.create_all()
+    with application.test_client() as c:
+        yield c
+    with application.app_context():
+        db.session.remove()
+        db.drop_all()

@@ -1,6 +1,6 @@
 """User serialization schemas."""
 
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, validate
 
 from app.extensions import db, ma
 from app.models.user import User
@@ -26,11 +26,37 @@ class UserSchema(ma.SQLAlchemySchema):
 
 
 class UserRegisterSchema(Schema):
-    name = fields.String(required=True)
+    name = fields.String(required=True, validate=validate.Length(min=1, max=120))
     email = fields.Email(required=True)
-    password = fields.String(required=True, load_only=True)
+    password = fields.String(
+        required=True,
+        load_only=True,
+        validate=validate.Length(min=8, max=128),
+    )
+
+
+class ProfileSelfUpdateSchema(Schema):
+    """Authenticated user: update display name and/or email."""
+
+    full_name = fields.String(validate=validate.Length(min=1, max=120), load_default=None)
+    email = fields.Email(load_default=None)
+
+
+class PasswordChangeSchema(Schema):
+    current_password = fields.String(required=True, validate=validate.Length(min=1, max=128))
+    new_password = fields.String(
+        required=True,
+        validate=validate.Length(min=8, max=128),
+    )
+
+
+class AccountDeleteSchema(Schema):
+    password = fields.String(required=True, validate=validate.Length(min=1, max=128))
 
 
 user_schema = UserSchema()
 users_schema = UserSchema(many=True)
 user_register_schema = UserRegisterSchema()
+profile_self_update_schema = ProfileSelfUpdateSchema()
+password_change_schema = PasswordChangeSchema()
+account_delete_schema = AccountDeleteSchema()

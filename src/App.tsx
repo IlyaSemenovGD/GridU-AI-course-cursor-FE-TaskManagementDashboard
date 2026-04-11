@@ -5,10 +5,16 @@ import { DashboardCollaboration } from './components/dashboard/DashboardCollabor
 import { TeamPage } from './components/dashboard/TeamPage'
 import { TasksWorkspace } from './components/dashboard/TasksWorkspace'
 import { Header } from './components/Header'
-import { SettingsPanel } from './components/SettingsPanel'
+import { SettingsPanel, type SettingsPanelTabId } from './components/SettingsPanel'
 import { Sidebar, type SidebarNavId } from './components/Sidebar'
+import { StorePanel } from './components/store/StorePanel'
 import { SupportTicketsPanel } from './components/support/SupportTicketsPanel'
-import { getSession, logoutUser, refreshSessionProfile, type Session } from './lib/auth'
+import {
+  getSession,
+  logoutUser,
+  refreshSessionProfile,
+  type Session,
+} from './lib/auth'
 import { loadActivities, saveActivities } from './lib/activityStore'
 import {
   completeTaskApi,
@@ -91,6 +97,11 @@ function headerCopy(nav: SidebarNavId): { title: string; description: string } {
         title: 'Support tickets',
         description: 'Customer support requests and SLA tracking',
       }
+    case 'store':
+      return {
+        title: 'Store',
+        description: 'Browse products, cart, discounts, and checkout',
+      }
     default:
       return {
         title: 'Dashboard',
@@ -103,6 +114,12 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(() => getSession())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeNav, setActiveNav] = useState<SidebarNavId>('dashboard')
+  const [settingsTab, setSettingsTab] = useState<SettingsPanelTabId>('profile')
+
+  const navigate = useCallback((id: SidebarNavId) => {
+    if (id === 'settings') setSettingsTab('profile')
+    setActiveNav(id)
+  }, [])
   const [darkMode, setDarkMode] = useState(() => readDarkMode())
   const [tasks, setTasks] = useState<Task[]>([])
   const [taskCreateError, setTaskCreateError] = useState<string | null>(null)
@@ -339,7 +356,7 @@ export default function App() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         activeId={activeNav}
-        onNavigate={setActiveNav}
+        onNavigate={navigate}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -352,6 +369,14 @@ export default function App() {
           pageDescription={pageDescription}
           userDisplayName={session.name}
           userInitials={initialsFromName(session.name)}
+          onUserMenuProfile={() => {
+            setSettingsTab('profile')
+            setActiveNav('settings')
+          }}
+          onUserMenuAccountSettings={() => {
+            setSettingsTab('privacy')
+            setActiveNav('settings')
+          }}
           onSignOut={handleSignOut}
         />
 
@@ -368,7 +393,17 @@ export default function App() {
                 setDarkMode(dark)
                 applyDarkMode(dark)
               }}
+              session={session}
+              onSessionChange={setSession}
+              initialTab={settingsTab}
+              onAccountDeleted={() => {
+                logoutUser()
+                setSession(null)
+                setActiveNav('dashboard')
+              }}
             />
+          ) : activeNav === 'store' ? (
+            <StorePanel session={session} />
           ) : activeNav === 'dashboard' ? (
             <DashboardCollaboration
               tasks={tasks}
@@ -387,7 +422,10 @@ export default function App() {
               onDeleteTask={deleteTask}
               onQuickNewTask={focusTaskForm}
               onNavigateTeam={() => setActiveNav('team')}
-              onNavigateSettings={() => setActiveNav('settings')}
+              onNavigateSettings={() => {
+                setSettingsTab('profile')
+                setActiveNav('settings')
+              }}
             />
           ) : activeNav === 'tasks' ? (
             <TasksWorkspace

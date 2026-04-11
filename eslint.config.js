@@ -6,7 +6,14 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'e2e/**', 'playwright.config.ts']),
+  globalIgnores([
+    'dist',
+    'e2e/**',
+    'playwright.config.ts',
+    'backend/**',
+    '**/.venv/**',
+    '**/node_modules/**',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +25,10 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+    rules: {
+      // Recommended set is strict for effects; many data-fetch patterns still use setState in effects.
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
 ])

@@ -67,3 +67,34 @@ def apply_sqlite_migrations() -> None:
                         "NOT NULL DEFAULT '[]'"
                     )
                 )
+
+        if "orders" in table_names:
+            cols = {c["name"] for c in insp.get_columns("orders")}
+            if "subtotal_cents" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE orders ADD COLUMN subtotal_cents INTEGER "
+                        "NOT NULL DEFAULT 0"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE orders ADD COLUMN discount_cents INTEGER "
+                        "NOT NULL DEFAULT 0"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE orders ADD COLUMN payment_reference VARCHAR(64)"
+                    )
+                )
+                conn.execute(text("UPDATE orders SET subtotal_cents = total_cents"))
+
+    if "products" in table_names and "discount_codes" in table_names:
+        from app.services.ecommerce_seed import (
+            seed_demo_catalog_if_empty,
+            seed_discount_codes_if_empty,
+        )
+
+        seed_demo_catalog_if_empty()
+        seed_discount_codes_if_empty()

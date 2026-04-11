@@ -9,6 +9,10 @@ type HeaderProps = {
   pageDescription?: string
   userDisplayName: string
   userInitials: string
+  /** Open Settings on the Profile tab (name, email, password). */
+  onUserMenuProfile: () => void
+  /** Open Settings (Privacy tab: preferences + delete account). */
+  onUserMenuAccountSettings: () => void
   onSignOut: () => void
 }
 
@@ -21,6 +25,8 @@ export function Header({
   pageDescription = 'Track work across your workspace',
   userDisplayName,
   userInitials,
+  onUserMenuProfile,
+  onUserMenuAccountSettings,
   onSignOut,
 }: HeaderProps) {
   const menuId = useId()
@@ -124,22 +130,28 @@ export function Header({
               aria-labelledby={`${menuId}-user-btn`}
               className="absolute right-0 top-full z-50 mt-2 min-w-[12rem] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
             >
-              <a
-                href="#profile"
+              <button
+                type="button"
                 role="menuitem"
-                className="block px-4 py-2.5 text-sm text-zinc-800 outline-none ring-inset ring-violet-500 hover:bg-zinc-50 focus-visible:ring-2 dark:text-zinc-100 dark:hover:bg-zinc-800"
-                onClick={() => setUserOpen(false)}
+                className="block w-full px-4 py-2.5 text-left text-sm text-zinc-800 outline-none ring-inset ring-violet-500 hover:bg-zinc-50 focus-visible:ring-2 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => {
+                  setUserOpen(false)
+                  onUserMenuProfile()
+                }}
               >
                 Profile
-              </a>
-              <a
-                href="#account-settings"
+              </button>
+              <button
+                type="button"
                 role="menuitem"
-                className="block px-4 py-2.5 text-sm text-zinc-800 outline-none ring-inset ring-violet-500 hover:bg-zinc-50 focus-visible:ring-2 dark:text-zinc-100 dark:hover:bg-zinc-800"
-                onClick={() => setUserOpen(false)}
+                className="block w-full px-4 py-2.5 text-left text-sm text-zinc-800 outline-none ring-inset ring-violet-500 hover:bg-zinc-50 focus-visible:ring-2 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => {
+                  setUserOpen(false)
+                  onUserMenuAccountSettings()
+                }}
               >
                 Account settings
-              </a>
+              </button>
               <hr className="my-1 border-zinc-200 dark:border-zinc-700" />
               <button
                 type="button"

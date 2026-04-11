@@ -1,4 +1,7 @@
-import { useCallback, useId, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useState, type KeyboardEvent } from 'react'
+import type { Session } from '../lib/auth'
+import { mergeProfileIntoSession, persistSession } from '../lib/auth'
+import { changePassword, deleteAccount, updateProfile } from '../lib/userApi'
 
 const TABS = [
   { id: 'profile', label: 'Profile' },
@@ -9,14 +12,33 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id']
 
+export type SettingsPanelTabId = TabId
+
 type SettingsPanelProps = {
   darkMode: boolean
   onDarkModeChange: (dark: boolean) => void
+  session: Session
+  onSessionChange: (session: Session) => void
+  /** Called after account is deleted (caller should clear auth and redirect). */
+  onAccountDeleted: () => void
+  /** Controlled by parent when opening Settings from header / sidebar (switch tab). */
+  initialTab?: TabId
 }
 
-export function SettingsPanel({ darkMode, onDarkModeChange }: SettingsPanelProps) {
+export function SettingsPanel({
+  darkMode,
+  onDarkModeChange,
+  session,
+  onSessionChange,
+  onAccountDeleted,
+  initialTab = 'profile',
+}: SettingsPanelProps) {
   const baseId = useId()
-  const [activeTab, setActiveTab] = useState<TabId>('profile')
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   const announceSave = useCallback((msg: string) => {
@@ -105,7 +127,11 @@ export function SettingsPanel({ darkMode, onDarkModeChange }: SettingsPanelProps
             className="outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
           >
             {activeTab === 'profile' ? (
-              <ProfileTab onSave={() => announceSave('Profile settings saved.')} />
+              <ProfileTab
+                session={session}
+                onSessionChange={onSessionChange}
+                onSave={(msg) => announceSave(msg ?? 'Profile settings saved.')}
+              />
             ) : null}
             {activeTab === 'notifications' ? (
               <NotificationsTab
@@ -113,7 +139,10 @@ export function SettingsPanel({ darkMode, onDarkModeChange }: SettingsPanelProps
               />
             ) : null}
             {activeTab === 'privacy' ? (
-              <PrivacyTab onSave={() => announceSave('Privacy settings saved.')} />
+              <PrivacyTab
+                onSave={() => announceSave('Privacy settings saved.')}
+                onAccountDeleted={onAccountDeleted}
+              />
             ) : null}
             {activeTab === 'appearance' ? (
               <AppearanceTab
@@ -139,97 +168,217 @@ export function SettingsPanel({ darkMode, onDarkModeChange }: SettingsPanelProps
   )
 }
 
-function ProfileTab({ onSave }: { onSave: () => void }) {
+function ProfileTab({
+  session,
+  onSessionChange,
+  onSave,
+}: {
+  session: Session
+  onSessionChange: (session: Session) => void
+  onSave: (msg?: string) => void
+}) {
   const nameId = useId()
   const emailId = useId()
-  const titleId = useId()
-  const bioId = useId()
+  const curPwdId = useId()
+  const newPwdId = useId()
+  const confirmPwdId = useId()
+
+  const [fullName, setFullName] = useState(session.name)
+  const [email, setEmail] = useState(session.email)
+  const [profileBusy, setProfileBusy] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwdBusy, setPwdBusy] = useState(false)
+  const [pwdError, setPwdError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setFullName(session.name)
+    setEmail(session.email)
+  }, [session.name, session.email, session.userId])
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setProfileError(null)
+    setProfileBusy(true)
+    const r = await updateProfile({
+      full_name: fullName.trim(),
+      email: email.trim().toLowerCase(),
+    })
+    setProfileBusy(false)
+    if (!r.ok) {
+      setProfileError(r.error)
+      return
+    }
+    const next = mergeProfileIntoSession(session, r.user)
+    persistSession(next)
+    onSessionChange(next)
+    onSave('Profile saved.')
+  }
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwdError(null)
+    if (newPassword.length < 8) {
+      setPwdError('New password must be at least 8 characters.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPwdError('New password and confirmation do not match.')
+      return
+    }
+    setPwdBusy(true)
+    const r = await changePassword({
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    setPwdBusy(false)
+    if (!r.ok) {
+      setPwdError(r.error)
+      return
+    }
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    onSave('Password updated.')
+  }
 
   return (
-    <form
-      className="space-y-6"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSave()
-      }}
-    >
-      <fieldset className="space-y-4 border-0 p-0">
-        <legend className="sr-only">Profile information</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
+    <div className="space-y-10">
+      <form className="space-y-6" onSubmit={(e) => void handleProfileSubmit(e)}>
+        <fieldset className="space-y-4 border-0 p-0">
+          <legend className="sr-only">Profile information</legend>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Update your display name and email. Email must be unique across accounts.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor={nameId}
+                className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              >
+                Display name
+              </label>
+              <input
+                id={nameId}
+                name="displayName"
+                type="text"
+                autoComplete="name"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-violet-500 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor={emailId}
+                className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              >
+                Email
+              </label>
+              <input
+                id={emailId}
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-violet-500 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+              />
+            </div>
+          </div>
+          {profileError ? (
+            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+              {profileError}
+            </p>
+          ) : null}
+        </fieldset>
+        <div className="flex justify-end border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <button
+            type="submit"
+            disabled={profileBusy}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-violet-600 px-4 text-sm font-medium text-white outline-none ring-violet-500 transition-colors hover:bg-violet-700 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-zinc-900"
+          >
+            {profileBusy ? 'Saving…' : 'Save profile'}
+          </button>
+        </div>
+      </form>
+
+      <form className="space-y-6 border-t border-zinc-200 pt-8 dark:border-zinc-800" onSubmit={(e) => void handlePasswordSubmit(e)}>
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Change password</h3>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Enter your current password and a new password (at least 8 characters).
+        </p>
+        <div className="max-w-md space-y-3">
           <div>
             <label
-              htmlFor={nameId}
+              htmlFor={curPwdId}
               className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
             >
-              Display name
+              Current password
             </label>
             <input
-              id={nameId}
-              name="displayName"
-              type="text"
-              autoComplete="name"
-              defaultValue="Jordan Doe"
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-violet-500 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+              id={curPwdId}
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
             />
           </div>
           <div>
             <label
-              htmlFor={emailId}
+              htmlFor={newPwdId}
               className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
             >
-              Email
+              New password
             </label>
             <input
-              id={emailId}
-              name="email"
-              type="email"
-              autoComplete="email"
-              defaultValue="jordan@example.com"
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-violet-500 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+              id={newPwdId}
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor={confirmPwdId}
+              className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            >
+              Confirm new password
+            </label>
+            <input
+              id={confirmPwdId}
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
             />
           </div>
         </div>
-        <div>
-          <label
-            htmlFor={titleId}
-            className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+        {pwdError ? (
+          <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            {pwdError}
+          </p>
+        ) : null}
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={pwdBusy}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-900 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
           >
-            Job title
-          </label>
-          <input
-            id={titleId}
-            name="jobTitle"
-            type="text"
-            autoComplete="organization-title"
-            defaultValue="Product designer"
-            className="w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-violet-500 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500"
-          />
+            {pwdBusy ? 'Updating…' : 'Update password'}
+          </button>
         </div>
-        <div>
-          <label
-            htmlFor={bioId}
-            className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-          >
-            Bio
-          </label>
-          <textarea
-            id={bioId}
-            name="bio"
-            rows={4}
-            defaultValue="I focus on accessible workflows and clear task ownership across teams."
-            className="w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-violet-500 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500"
-          />
-        </div>
-      </fieldset>
-      <div className="flex justify-end border-t border-zinc-100 pt-4 dark:border-zinc-800">
-        <button
-          type="submit"
-          className="inline-flex min-h-10 items-center justify-center rounded-lg bg-violet-600 px-4 text-sm font-medium text-white outline-none ring-violet-500 transition-colors hover:bg-violet-700 focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
-        >
-          Save profile
-        </button>
-      </div>
-    </form>
+      </form>
+    </div>
   )
 }
 
@@ -310,13 +459,45 @@ function NotificationsTab({ onSave }: { onSave: () => void }) {
   )
 }
 
-function PrivacyTab({ onSave }: { onSave: () => void }) {
+function PrivacyTab({
+  onSave,
+  onAccountDeleted,
+}: {
+  onSave: () => void
+  onAccountDeleted: () => void
+}) {
   const visibilityId = useId()
+  const deletePwdId = useId()
   const [profileVisible, setProfileVisible] = useState(true)
   const [analytics, setAnalytics] = useState(false)
   const [activityVisibility, setActivityVisibility] = useState('team')
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setDeleteError(null)
+    if (
+      !window.confirm(
+        'Permanently delete your account and all associated data (tasks, projects you own, support tickets)? This cannot be undone.',
+      )
+    ) {
+      return
+    }
+    setDeleteBusy(true)
+    const r = await deleteAccount(deletePassword)
+    setDeleteBusy(false)
+    if (!r.ok) {
+      setDeleteError(r.error)
+      return
+    }
+    persistSession(null)
+    onAccountDeleted()
+  }
 
   return (
+    <>
     <form
       className="space-y-6"
       onSubmit={(e) => {
@@ -369,6 +550,44 @@ function PrivacyTab({ onSave }: { onSave: () => void }) {
         </button>
       </div>
     </form>
+
+    <div className="mt-10 border-t border-red-200 pt-8 dark:border-red-900/40">
+      <h3 className="text-sm font-semibold text-red-800 dark:text-red-300">Danger zone</h3>
+      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        Delete your account permanently. You will be signed out immediately.
+      </p>
+      <form className="mt-4 max-w-md space-y-3" onSubmit={(e) => void handleDeleteAccount(e)}>
+        <div>
+          <label
+            htmlFor={deletePwdId}
+            className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+          >
+            Confirm with your password
+          </label>
+          <input
+            id={deletePwdId}
+            type="password"
+            autoComplete="current-password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+          />
+        </div>
+        {deleteError ? (
+          <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            {deleteError}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={deleteBusy || !deletePassword}
+          className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-100 disabled:opacity-50 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/70"
+        >
+          {deleteBusy ? 'Deleting…' : 'Delete my account'}
+        </button>
+      </form>
+    </div>
+    </>
   )
 }
 

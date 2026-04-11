@@ -81,8 +81,15 @@ class TestingConfig(BaseConfig):
     }
 
 
+class TestingRateLimitConfig(TestingConfig):
+    """Like testing, but Flask-Limiter is enabled (for rate-limit integration tests)."""
+
+    RATELIMIT_ENABLED = True
+
+
 config_by_name = {
     "development": DevelopmentConfig,
     "production": ProductionConfig,
     "testing": TestingConfig,
+    "testing_ratelimit": TestingRateLimitConfig,
 }

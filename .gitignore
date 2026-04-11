@@ -31,6 +31,7 @@ blob-report
 
 # Python / Flask (backend)
 backend/.venv
+backend/.ci-pkgs
 backend/**/__pycache__
 backend/**/.pytest_cache
 backend/.coverage
