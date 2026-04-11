@@ -117,6 +117,7 @@ export function SupportTicketsPanel({ session, onUnauthorized }: Props) {
     priority: string
     category: string
     customer_email: string
+    files?: File[]
   }) => {
     setCreateError(null)
     const r = await createSupportTicket({
@@ -512,6 +513,7 @@ function SupportTicketCreateForm({
     priority: string
     category: string
     customer_email: string
+    files?: File[]
   }) => Promise<boolean>
   onErrorClear: () => void
 }) {
@@ -520,6 +522,7 @@ function SupportTicketCreateForm({
   const [priority, setPriority] = useState('medium')
   const [category, setCategory] = useState('general')
   const [email, setEmail] = useState(session.email)
+  const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -532,6 +535,7 @@ function SupportTicketCreateForm({
       priority,
       category,
       customer_email: email.trim().toLowerCase(),
+      files: files.length ? files.slice(0, 3) : undefined,
     })
     setBusy(false)
     if (ok) {
@@ -540,6 +544,7 @@ function SupportTicketCreateForm({
       setPriority('medium')
       setCategory('general')
       setEmail(session.email)
+      setFiles([])
     }
   }
 
@@ -551,7 +556,8 @@ function SupportTicketCreateForm({
     >
       <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">New ticket</h3>
       <p className="mt-1 text-xs text-zinc-500">
-        Subject 5–200 chars; description at least 20 characters.
+        Subject 5–200 characters (letters, numbers, common punctuation only). Description at least 20
+        characters. Up to 3 attachments (5 MB each): PDF, PNG, JPG, DOC, DOCX.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
@@ -614,6 +620,19 @@ function SupportTicketCreateForm({
           className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+        />
+      </label>
+      <label className="mt-3 block text-sm">
+        <span className="text-zinc-600 dark:text-zinc-400">Attachments (optional)</span>
+        <input
+          type="file"
+          className="mt-1 block w-full text-sm text-zinc-600 file:mr-3 file:rounded file:border-0 file:bg-violet-50 file:px-3 file:py-1 file:text-sm file:font-medium file:text-violet-700 dark:text-zinc-400 dark:file:bg-violet-950 dark:file:text-violet-200"
+          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+          multiple
+          onChange={(e) => {
+            const list = e.target.files ? Array.from(e.target.files).slice(0, 3) : []
+            setFiles(list)
+          }}
         />
       </label>
       {error && (

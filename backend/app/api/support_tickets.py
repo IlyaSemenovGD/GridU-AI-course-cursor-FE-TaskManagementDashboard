@@ -58,6 +58,7 @@ from app.services.ticket_notify import (
     notify_ticket_assigned,
     notify_ticket_created,
 )
+from app.utils.file_signatures import content_matches_extension
 from app.utils.text_sanitize import sanitize_plain
 
 bp = Blueprint("support_tickets", __name__)
@@ -75,6 +76,66 @@ def _error(message: str, code: str, status: int, errors: dict | None = None):
     if errors:
         payload["errors"] = errors
     return payload, status
+
+
+def _create_payload_and_files() -> tuple[dict, list]:
+    """JSON body, or multipart form with optional `file` fields (PRD: attachments on create)."""
+    ct = (request.content_type or "").lower()
+    if "multipart/form-data" in ct:
+        payload = {
+            "subject": request.form.get("subject") or "",
+            "description": request.form.get("description") or "",
+            "priority": request.form.get("priority") or "",
+            "category": request.form.get("category") or "",
+            "customer_email": request.form.get("customer_email") or "",
+            "auto_assign": request.form.get("auto_assign", "true").lower()
+            in ("1", "true", "yes", "on"),
+        }
+        raw = request.files.getlist("file")
+        files = [f for f in raw if f and getattr(f, "filename", None)]
+        return payload, files
+    return request.get_json(silent=True) or {}, []
+
+
+def _uploads_dir(ticket_id: int) -> str:
+    base = os.path.join(current_app.instance_path, "uploads", "tickets", str(ticket_id))
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def _persist_attachment_file(ticket_id: int, f) -> tuple[TicketAttachment | None, str | None]:
+    """
+    Save one upload: size, extension, magic-byte check (NFR-011).
+    Returns (attachment, None) or (None, error_message).
+    """
+    if not f or not f.filename:
+        return None, "file is required."
+    name = secure_filename(f.filename)
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in ALLOWED_ATTACHMENT_EXT:
+        return None, "File type not allowed."
+    f.stream.seek(0)
+    data = f.read()
+    size = len(data)
+    if size > MAX_ATTACHMENT_BYTES:
+        return None, "File too large (max 5MB)."
+    if not content_matches_extension(data, ext):
+        return None, "File content does not match the allowed type for this extension."
+    dest_dir = _uploads_dir(ticket_id)
+    stored_name = f"{datetime.now(timezone.utc).timestamp():.0f}_{name}"
+    path = os.path.join(dest_dir, stored_name)
+    with open(path, "wb") as out:
+        out.write(data)
+    att = TicketAttachment(
+        ticket_id=ticket_id,
+        comment_id=None,
+        filename=name,
+        stored_path=path,
+        file_size=size,
+        mime_type=getattr(f, "mimetype", None) or "application/octet-stream",
+    )
+    db.session.add(att)
+    return att, None
 
 
 @bp.get("/tickets")
@@ -150,7 +211,13 @@ def create_ticket():
     user = _current_user()
     if user is None:
         return _error("User not found.", "NOT_FOUND", 404)
-    data = request.get_json(silent=True) or {}
+    data, upload_files = _create_payload_and_files()
+    if len(upload_files) > MAX_ATTACHMENTS_PER_TICKET:
+        return _error(
+            f"Maximum {MAX_ATTACHMENTS_PER_TICKET} attachments per ticket.",
+            "VALIDATION_ERROR",
+            400,
+        )
     errs = ticket_create_schema.validate(data)
     if errs:
         return _error("Validation failed.", "VALIDATION_ERROR", 400, errors=errs)
@@ -181,6 +248,12 @@ def create_ticket():
     )
     db.session.add(ticket)
     db.session.flush()
+
+    for uf in upload_files:
+        _att, att_err = _persist_attachment_file(ticket.id, uf)
+        if att_err:
+            db.session.rollback()
+            return _error(att_err, "VALIDATION_ERROR", 400)
 
     notify_ticket_created(ticket, user)
 
@@ -500,12 +573,6 @@ def ticket_history(ticket_id: int):
     return {"history": events}, 200
 
 
-def _uploads_dir(ticket_id: int) -> str:
-    base = os.path.join(current_app.instance_path, "uploads", "tickets", str(ticket_id))
-    os.makedirs(base, exist_ok=True)
-    return base
-
-
 @bp.post("/tickets/<int:ticket_id>/attachments")
 @jwt_required()
 def upload_attachment(ticket_id: int):
@@ -524,30 +591,10 @@ def upload_attachment(ticket_id: int):
             400,
         )
     f = request.files.get("file")
-    if not f or not f.filename:
-        return _error("file is required.", "VALIDATION_ERROR", 400)
-    name = secure_filename(f.filename)
-    ext = os.path.splitext(name)[1].lower()
-    if ext not in ALLOWED_ATTACHMENT_EXT:
-        return _error("File type not allowed.", "VALIDATION_ERROR", 400)
-    f.stream.seek(0, os.SEEK_END)
-    size = f.stream.tell()
-    f.stream.seek(0)
-    if size > MAX_ATTACHMENT_BYTES:
-        return _error("File too large (max 5MB).", "VALIDATION_ERROR", 400)
-    dest_dir = _uploads_dir(ticket_id)
-    stored_name = f"{datetime.now(timezone.utc).timestamp():.0f}_{name}"
-    path = os.path.join(dest_dir, stored_name)
-    f.save(path)
-    att = TicketAttachment(
-        ticket_id=ticket_id,
-        comment_id=None,
-        filename=name,
-        stored_path=path,
-        file_size=size,
-        mime_type=f.mimetype or "application/octet-stream",
-    )
-    db.session.add(att)
+    att, err = _persist_attachment_file(ticket_id, f)
+    if err:
+        db.session.rollback()
+        return _error(err, "VALIDATION_ERROR", 400)
     db.session.commit()
     return {
         "id": att.id,

@@ -64,18 +64,36 @@ export async function createSupportTicket(input: {
   category: string
   customer_email: string
   auto_assign?: boolean
+  /** Optional files (max 3); sent as multipart so uploads happen in the same request as create. */
+  files?: File[]
 }): Promise<{ ok: true; ticket: SupportTicket } | { ok: false; error: string }> {
   try {
+    const files = input.files?.filter(Boolean) ?? []
+    const useMultipart = files.length > 0
     const res = await apiFetch('/api/tickets', {
       method: 'POST',
-      body: JSON.stringify({
-        subject: input.subject,
-        description: input.description,
-        priority: input.priority,
-        category: input.category,
-        customer_email: input.customer_email,
-        auto_assign: input.auto_assign ?? true,
-      }),
+      body: useMultipart
+        ? (() => {
+            const fd = new FormData()
+            fd.set('subject', input.subject)
+            fd.set('description', input.description)
+            fd.set('priority', input.priority)
+            fd.set('category', input.category)
+            fd.set('customer_email', input.customer_email)
+            fd.set('auto_assign', String(input.auto_assign ?? true))
+            for (const f of files.slice(0, 3)) {
+              fd.append('file', f)
+            }
+            return fd
+          })()
+        : JSON.stringify({
+            subject: input.subject,
+            description: input.description,
+            priority: input.priority,
+            category: input.category,
+            customer_email: input.customer_email,
+            auto_assign: input.auto_assign ?? true,
+          }),
     })
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
     if (!res.ok) return { ok: false, error: errorMessageFromBody(data) }

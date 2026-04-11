@@ -4,11 +4,24 @@ from marshmallow import Schema, fields, validates
 from marshmallow.validate import Length, OneOf, Range
 
 from app.models.support import TicketCategory, TicketPriority, TicketStatus
+from app.utils.support_validation import (
+    normalize_email_rfc5322,
+    validate_subject_prd,
+)
 
 
 def _no_control_chars(value: str) -> None:
     if any(ord(c) < 32 for c in value):
         raise fields.ValidationError("Contains invalid control characters.")
+
+
+class RFC5322Email(fields.String):
+    """PRD NFR-015: validate/normalize email (email-validator, no DNS probe)."""
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise fields.ValidationError("Not a valid email address.")
+        return normalize_email_rfc5322(str(value))
 
 
 class TicketCreateSchema(Schema):
@@ -20,12 +33,13 @@ class TicketCreateSchema(Schema):
     category = fields.String(
         required=True, validate=OneOf([c.value for c in TicketCategory])
     )
-    customer_email = fields.Email(required=True)
+    customer_email = RFC5322Email(required=True)
     auto_assign = fields.Boolean(load_default=True)
 
     @validates("subject")
     def validate_subject_chars(self, value: str, **_kwargs) -> None:
         _no_control_chars(value)
+        validate_subject_prd(value)
 
 
 class TicketUpdateSchema(Schema):
@@ -37,6 +51,7 @@ class TicketUpdateSchema(Schema):
         if value is None:
             return
         _no_control_chars(value)
+        validate_subject_prd(value)
 
 
 class TicketStatusSchema(Schema):
